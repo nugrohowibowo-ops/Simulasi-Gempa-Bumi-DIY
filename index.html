@@ -1,14 +1,26 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
-    <title>Peta Simulasi Gempabumi di DIY</title>
+    <title>Peta Simulasi Gempabumi DIY</title>
+    <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
     <style>
-        body { margin: 0; padding: 0; font-family: sans-serif; }
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
         #map { height: 100vh; width: 100vw; }
 
-        /* Kontrol Zoom */
+        /* Kotak Info */
+        .info-box {
+            position: absolute; top: 10px; right: 10px; z-index: 1000;
+            background: white; padding: 12px; border-radius: 10px;
+            font-size: 13px; border: 2px solid #007bff; font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2); line-height: 1.6;
+        }
+
         .zoom-controls {
             position: absolute; bottom: 100px; right: 20px;
             z-index: 1000; display: flex; flex-direction: column; gap: 10px;
@@ -16,151 +28,132 @@
         .zoom-btn {
             width: 50px; height: 50px;
             background: white; border: none; border-radius: 50%;
-            font-size: 24px; font-weight: bold; color: #333;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-size: 24px; font-weight: bold; display: flex; 
+            align-items: center; justify-content: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3); cursor: pointer;
         }
-        .zoom-btn:active { background: #f0f0f0; }
 
-        /* Tombol Lokasi */
         .btn-loc {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             z-index: 1000; background: #007bff; color: white; border: none;
-            padding: 12px 25px; border-radius: 50px; font-weight: bold;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3); cursor: pointer;
+            padding: 15px 30px; border-radius: 50px; font-weight: bold;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3); cursor: pointer;
         }
         
-        /* Info Akurasi GPS */
-        .info-box {
-            position: absolute; top: 10px; right: 10px; z-index: 1000;
-            background: white; padding: 8px 15px; border-radius: 8px;
-            font-size: 13px; border: 1px solid #ccc; font-weight: bold;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        
-        /* Label Ruangan (Marker) */
-        .label-ruang {
+        .label-stasiun {
             background: rgba(255, 255, 255, 0.9);
-            border: 1px solid #007bff; color: #000;
-            padding: 4px 8px; border-radius: 4px;
-            font-size: 12px; font-weight: bold; 
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
-            cursor: pointer;
-            text-align: center;
+            border: 1px solid #007bff; padding: 4px 8px; border-radius: 4px;
+            font-size: 11px; font-weight: bold; text-align: center;
         }
     </style>
 </head>
 <body>
 
     <div id="map"></div>
-    <div class="info-box" id="info-gps">Menunggu GPS...</div>
+    
+    <div class="info-box" id="info-panel">
+        📡 GPS: Menunggu... <br>
+        📏 Jarak ke Sesar: -
+    </div>
 
     <div class="zoom-controls">
         <button class="zoom-btn" onclick="map.zoomIn()">+</button>
         <button class="zoom-btn" onclick="map.zoomOut()">−</button>
     </div>
 
-    <button class="btn-loc" onclick="lacakSaya()">📍 Posisi Saya</button>
+    <button class="btn-loc" onclick="lacakSaya()">📍 Cek Posisi & Jarak Sesar</button>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <script>
-        // --- 1. SETUP PETA ---
+        // --- 1. SETUP PETA & BASEMAP ---
         var pojokKiriAtas = [-7.242611, 109.761658]; 
         var pojokKananBawah = [-8.708642, 111.027832]; 
         var bounds = [pojokKiriAtas, pojokKananBawah];
         
-        var map = L.map('map', {zoomControl: false}).fitBounds(bounds);
+        var map = L.map('map', { zoomControl: false }).fitBounds(bounds);
 
-        // Base Map Google Satellite Hybrid (Menggunakan HTTPS)
         L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-            maxZoom: 21, 
-            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], 
+            maxZoom: 21,
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
             attribution: '© Google Maps'
         }).addTo(map);
 
-        // Overlay Gambar pga 
-        var imageUrl = 'pga.png';
-        var imageOverlay = L.imageOverlay(imageUrl, bounds, { 
-            opacity: 0.7, 
-            errorOverlayUrl: 'https://via.placeholder.com/500x500?text=Gambar+pga.png+Tidak+Ditemukan' 
+        // Overlay PGA
+        L.imageOverlay('pga.png', bounds, { 
+            opacity: 0.5, 
+            errorOverlayUrl: 'https://via.placeholder.com/500x500?text=pga.png+Tidak+Ada' 
         }).addTo(map);
 
-        // --- 2. DATA MARKER ---
-        // Catatan: Pastikan lat/lng selalu memiliki nilai angka agar tidak error
-        var ruangan = [
-            { 
-                nama: "Stasiun Geofisika Sleman", 
-                lat: -7.816641,
-                lng: 110.294745,
-                foto: "", 
-                info: "Monitoring Aktifitas Gempabumi<br><b>Operasional 24 Jam</b>"
+        // --- 2. DATA SESAR INTERNAL (DITANAM LANGSUNG) ---
+        var dataSesar = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": { "Primary ID": "Opak Fault" },
+                    "geometry": { "type": "LineString", "coordinates": [[110.276676,-8.024949],[110.299617,-8.004626],[110.316971,-7.991697],[110.334324,-7.978767],[110.345481,-7.969529],[110.359125,-7.95289],[110.382081,-7.916518],[110.398832,-7.888157],[110.413078,-7.880155],[110.435385,-7.859205],[110.45087,-7.848119],[110.480629,-7.80311],[110.509753,-7.766736],[110.555597,-7.710015]] }
+                },
+                {
+                    "type": "Feature",
+                    "properties": { "Primary ID": "Mataram Fault" },
+                    "geometry": { "type": "LineString", "coordinates": [[110.350487,-7.765148],[110.368555,-7.765104],[110.392415,-7.767349],[110.405762,-7.767571],[110.412648,-7.768762],[110.421356,-7.769334],[110.430376,-7.770893],[110.439063,-7.771963],[110.444513,-7.77261],[110.449209,-7.772299],[110.45387,-7.772138],[110.460198,-7.771941],[110.463554,-7.7724],[110.468199,-7.773036],[110.471948,-7.77355],[110.476744,-7.774266],[110.479259,-7.77466]] }
+                },
+                {
+                    "type": "Feature",
+                    "properties": { "Primary ID": "Mataram Fault" },
+                    "geometry": { "type": "LineString", "coordinates": [[110.509753,-7.766736],[110.520245,-7.76835],[110.526068,-7.768858],[110.533171,-7.770363],[110.546948,-7.773281],[110.553046,-7.774573],[110.557761,-7.775571],[110.5626,-7.777196],[110.569734,-7.779591],[110.577675,-7.782256],[110.582068,-7.784037],[110.588613,-7.78669],[110.597092,-7.789534],[110.60775,-7.791846],[110.617985,-7.793564],[110.624028,-7.794405],[110.62836,-7.795009],[110.644872,-7.79731]] }
+                }
+            ]
+        };
+
+        // Gambar Sesar ke Peta
+        L.geoJSON(dataSesar, {
+            style: function(feature) {
+                var nama = feature.properties["Primary ID"];
+                return {
+                    color: (nama === "Opak Fault") ? "#ff0000" : "#ffae00",
+                    weight: 5, opacity: 0.9, dashArray: "5, 10"
+                };
             }
-        ];
+        }).addTo(map);
 
-        // Loop Membuat Marker
-        ruangan.forEach(function(r) {
-            var marker = L.marker([r.lat, r.lng], { opacity: 0 }).addTo(map);
-            
-            marker.bindTooltip(r.nama, { 
-                permanent: true, 
-                direction: "top", 
-                className: "label-ruang", 
-                interactive: true 
-            });
+        // --- 3. MARKER STASIUN ---
+        var markerSleiman = L.marker([-7.816641, 110.294745], { opacity: 0 }).addTo(map);
+        markerSleiman.bindTooltip("Stasiun Geofisika Sleman", { permanent: true, className: 'label-stasiun' });
 
-            var isiPopup = `
-                <div style='text-align:center; width:200px;'>
-                    ${r.foto ? `<img src='${r.foto}' style='width:100%; height:auto; border-radius:5px; margin-bottom:5px; border:1px solid #ddd;' alt='${r.nama}'>` : ''}
-                    <h3 style='margin:5px 0; color:#007bff; font-size:14px;'>${r.nama}</h3>
-                    <p style='margin:0; font-size:12px; color:#555;'>${r.info}</p>
-                </div>
-            `;
-            
-            marker.bindPopup(isiPopup);
-            marker.on('click', function() {
-                this.openPopup();
-            });
-        });
-
-        // --- 3. FITUR GPS (GEOLOCATION) ---
-        var userMarker = L.circleMarker([0,0], { radius: 8, color: 'white', weight: 2, fillColor: '#007bff', fillOpacity: 1 }).addTo(map);
-        var accuracyCircle = L.circle([0,0], { radius: 1, color: '#007bff', weight: 1, fillOpacity: 0.15 }).addTo(map);
+        // --- 4. GPS & LOGIKA JARAK ---
+        var userMarker = L.circleMarker([0,0], { radius: 9, color: 'white', weight: 3, fillColor: '#007bff', fillOpacity: 1 }).addTo(map);
+        var accuracyCircle = L.circle([0,0], { radius: 1, color: '#007bff', weight: 1, fillOpacity: 0.1 }).addTo(map);
         var gpsActive = false;
 
         function lacakSaya() {
-            if (!navigator.geolocation) return alert("Browser Anda tidak mendukung GPS.");
-            
-            navigator.geolocation.watchPosition(
-                (pos) => {
-                    var lat = pos.coords.latitude;
-                    var lng = pos.coords.longitude;
-                    var acc = pos.coords.accuracy;
-                    
-                    userMarker.setLatLng([lat, lng]);
-                    accuracyCircle.setLatLng([lat, lng]).setRadius(acc);
-                    
-                    var textInfo = document.getElementById('info-gps');
-                    textInfo.innerHTML = "Akurasi GPS: " + Math.round(acc) + " m";
-                    
-                    if(acc <= 15) {
-                        textInfo.style.color = "green"; 
-                        textInfo.style.borderColor = "green";
-                    } else {
-                        textInfo.style.color = "red";
-                        textInfo.style.borderColor = "red";
-                    }
+            if (!navigator.geolocation) return alert("GPS tidak didukung.");
 
-                    if (!gpsActive) { 
-                        map.setView([lat, lng], 16); 
-                        gpsActive = true; 
-                    }
-                },
-                (err) => { 
-                    console.error(err);
-                    alert("Gagal mengambil lokasi. Pastikan GPS aktif dan izin lokasi diberikan."); 
-                },
-                { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
-            );
+            navigator.geolocation.watchPosition((pos) => {
+                var lat = pos.coords.latitude;
+                var lng = pos.coords.longitude;
+                var acc = pos.coords.accuracy;
+
+                userMarker.setLatLng([lat, lng]);
+                accuracyCircle.setLatLng([lat, lng]).setRadius(acc);
+
+                // Hitung Jarak Terdekat ke Sesar menggunakan Turf.js
+                var userPt = turf.point([lng, lat]);
+                var snapped = turf.nearestPointOnLine(dataSesar, userPt, { units: 'kilometers' });
+                var jarak = snapped.properties.dist.toFixed(2);
+                var namaSesar = snapped.properties["Primary ID"] || "Sesar";
+
+                document.getElementById('info-panel').innerHTML = `
+                    📡 GPS: ${Math.round(acc)} m <br>
+                    📏 Jarak: <span style="color:red">${jarak} km ke ${namaSesar}</span>
+                `;
+
+                if (!gpsActive) {
+                    map.setView([lat, lng], 15);
+                    gpsActive = true;
+                }
+            }, (err) => alert("Aktifkan GPS!"), { enableHighAccuracy: true });
         }
     </script>
 </body>
