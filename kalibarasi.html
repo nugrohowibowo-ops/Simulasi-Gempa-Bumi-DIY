@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mode Kalibrasi - Google Satelit</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; } #map { height: 100vh; }
+        #coords-box {
+            position: absolute; bottom: 20px; left: 20px; z-index: 1000;
+            background: rgba(255, 255, 255, 0.95); padding: 15px; 
+            border: 3px solid #d32f2f; border-radius: 8px;
+            font-family: monospace; font-size: 14px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            max-width: 300px;
+        }
+        h3 { margin: 0 0 10px 0; color: #d32f2f; border-bottom: 1px solid #ccc; padding-bottom: 5px;}
+        .instruction { font-size: 12px; color: #333; margin-bottom: 10px; }
+        .code-snippet { background: #eee; padding: 5px; border-radius: 4px; user-select: all; cursor: pointer;}
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div id="coords-box">
+        <h3>🔧 MODE KALIBRASI</h3>
+        <div class="instruction">
+            1. Geser <b>PIN BIRU</b> sampai gambar denah pas menutup atap gedung di foto satelit.<br>
+            2. Salin angka di bawah ini ke file <b>index.html</b>:
+        </div>
+        
+        <div class="code-snippet">
+            var pojokKiriAtas = [<span id="p1-lat">...</span>, <span id="p1-lng">...</span>];<br>
+            var pojokKananBawah = [<span id="p2-lat">...</span>, <span id="p2-lng">...</span>];
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Lokasi Tengah (Saya set di koordinat terakhir Anda agar tidak perlu geser jauh)
+        var center = [-7.816500, 110.294700]; 
+        var map = L.map('map').setView(center, 19);
+
+        // --- GANTI KE GOOGLE SATELLITE (HYBRID) ---
+        // lyrs=y artinya Hybrid (Satelit + Jalan)
+        L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+            maxZoom: 21, // Zoom bisa lebih dalam dibanding OSM
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+            attribution: '© Google Maps'
+        }).addTo(map);
+
+        // --- FILE GAMBAR ANDA ---
+        var urlGambar = 'pga.png'; 
+
+        // Posisi awal marker (sedikit offset agar terlihat di layar)
+        var b1 = L.latLng(center[0] + 0.0003, center[1] - 0.0003);
+        var b2 = L.latLng(center[0] - 0.0003, center[1] + 0.0003);
+        
+        var overlay = L.imageOverlay(urlGambar, [b1, b2], {opacity: 0.7}).addTo(map);
+        
+        // Marker yang bisa digeser
+        var m1 = L.marker(b1, {draggable: true}).addTo(map);
+        var m2 = L.marker(b2, {draggable: true}).addTo(map);
+
+        function updateGambar() {
+            var newBounds = [m1.getLatLng(), m2.getLatLng()];
+            overlay.setBounds(newBounds);
+            
+            // Update teks koordinat (dibatasi 6 desimal agar rapi)
+            document.getElementById('p1-lat').innerText = m1.getLatLng().lat.toFixed(6);
+            document.getElementById('p1-lng').innerText = m1.getLatLng().lng.toFixed(6);
+            document.getElementById('p2-lat').innerText = m2.getLatLng().lat.toFixed(6);
+            document.getElementById('p2-lng').innerText = m2.getLatLng().lng.toFixed(6);
+        }
+
+        m1.on('drag', updateGambar);
+        m2.on('drag', updateGambar);
+        
+        // Inisialisasi awal
+        updateGambar();
+        map.fitBounds([b1, b2]);
+    </script>
+</body>
+</html>

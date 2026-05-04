@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Peta Simulasi Gempabumi di DIY</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; }
+        #map { height: 100vh; width: 100vw; }
+
+        /* Kontrol Zoom */
+        .zoom-controls {
+            position: absolute; bottom: 100px; right: 20px;
+            z-index: 1000; display: flex; flex-direction: column; gap: 10px;
+        }
+        .zoom-btn {
+            width: 50px; height: 50px;
+            background: white; border: none; border-radius: 50%;
+            font-size: 24px; font-weight: bold; color: #333;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .zoom-btn:active { background: #f0f0f0; }
+
+        /* Tombol Lokasi */
+        .btn-loc {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            z-index: 1000; background: #007bff; color: white; border: none;
+            padding: 12px 25px; border-radius: 50px; font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3); cursor: pointer;
+        }
+        
+        /* Info Akurasi GPS */
+        .info-box {
+            position: absolute; top: 10px; right: 10px; z-index: 1000;
+            background: white; padding: 8px 15px; border-radius: 8px;
+            font-size: 13px; border: 1px solid #ccc; font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        /* Label Ruangan (Marker) */
+        .label-ruang {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid #007bff; color: #000;
+            padding: 4px 8px; border-radius: 4px;
+            font-size: 12px; font-weight: bold; 
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+            cursor: pointer;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+    <div class="info-box" id="info-gps">Menunggu GPS...</div>
+
+    <div class="zoom-controls">
+        <button class="zoom-btn" onclick="map.zoomIn()">+</button>
+        <button class="zoom-btn" onclick="map.zoomOut()">−</button>
+    </div>
+
+    <button class="btn-loc" onclick="lacakSaya()">📍 Posisi Saya</button>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // --- 1. SETUP PETA ---
+        var pojokKiriAtas = [-7.242611, 109.761658]; 
+        var pojokKananBawah = [-8.708642, 111.027832]; 
+        var bounds = [pojokKiriAtas, pojokKananBawah];
+        
+        var map = L.map('map', {zoomControl: false}).fitBounds(bounds);
+
+        // Base Map Google Satellite Hybrid (Menggunakan HTTPS)
+        L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+            maxZoom: 21, 
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], 
+            attribution: '© Google Maps'
+        }).addTo(map);
+
+        // Overlay Gambar pga 
+        var imageUrl = 'pga.png';
+        var imageOverlay = L.imageOverlay(imageUrl, bounds, { 
+            opacity: 0.7, 
+            errorOverlayUrl: 'https://via.placeholder.com/500x500?text=Gambar+pga.png+Tidak+Ditemukan' 
+        }).addTo(map);
+
+        // --- 2. DATA MARKER ---
+        // Catatan: Pastikan lat/lng selalu memiliki nilai angka agar tidak error
+        var ruangan = [
+            { 
+                nama: "Stasiun Geofisika Sleman", 
+                lat: -7.816641,
+                lng: 110.294745,
+                foto: "", 
+                info: "Monitoring Aktifitas Gempabumi<br><b>Operasional 24 Jam</b>"
+            }
+        ];
+
+        // Loop Membuat Marker
+        ruangan.forEach(function(r) {
+            var marker = L.marker([r.lat, r.lng], { opacity: 0 }).addTo(map);
+            
+            marker.bindTooltip(r.nama, { 
+                permanent: true, 
+                direction: "top", 
+                className: "label-ruang", 
+                interactive: true 
+            });
+
+            var isiPopup = `
+                <div style='text-align:center; width:200px;'>
+                    ${r.foto ? `<img src='${r.foto}' style='width:100%; height:auto; border-radius:5px; margin-bottom:5px; border:1px solid #ddd;' alt='${r.nama}'>` : ''}
+                    <h3 style='margin:5px 0; color:#007bff; font-size:14px;'>${r.nama}</h3>
+                    <p style='margin:0; font-size:12px; color:#555;'>${r.info}</p>
+                </div>
+            `;
+            
+            marker.bindPopup(isiPopup);
+            marker.on('click', function() {
+                this.openPopup();
+            });
+        });
+
+        // --- 3. FITUR GPS (GEOLOCATION) ---
+        var userMarker = L.circleMarker([0,0], { radius: 8, color: 'white', weight: 2, fillColor: '#007bff', fillOpacity: 1 }).addTo(map);
+        var accuracyCircle = L.circle([0,0], { radius: 1, color: '#007bff', weight: 1, fillOpacity: 0.15 }).addTo(map);
+        var gpsActive = false;
+
+        function lacakSaya() {
+            if (!navigator.geolocation) return alert("Browser Anda tidak mendukung GPS.");
+            
+            navigator.geolocation.watchPosition(
+                (pos) => {
+                    var lat = pos.coords.latitude;
+                    var lng = pos.coords.longitude;
+                    var acc = pos.coords.accuracy;
+                    
+                    userMarker.setLatLng([lat, lng]);
+                    accuracyCircle.setLatLng([lat, lng]).setRadius(acc);
+                    
+                    var textInfo = document.getElementById('info-gps');
+                    textInfo.innerHTML = "Akurasi GPS: " + Math.round(acc) + " m";
+                    
+                    if(acc <= 15) {
+                        textInfo.style.color = "green"; 
+                        textInfo.style.borderColor = "green";
+                    } else {
+                        textInfo.style.color = "red";
+                        textInfo.style.borderColor = "red";
+                    }
+
+                    if (!gpsActive) { 
+                        map.setView([lat, lng], 16); 
+                        gpsActive = true; 
+                    }
+                },
+                (err) => { 
+                    console.error(err);
+                    alert("Gagal mengambil lokasi. Pastikan GPS aktif dan izin lokasi diberikan."); 
+                },
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+            );
+        }
+    </script>
+</body>
+</html>
