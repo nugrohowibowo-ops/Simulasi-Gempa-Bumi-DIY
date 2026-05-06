@@ -64,7 +64,7 @@
         L.geoJSON(dataSesar, {
             style: function(feature) {
                 var n = feature.properties.nama;
-                var c = (n === "SESAR OPAK") ? "red" : (n === "SESAR MERAPI MERBABU" ? "purple" : "orange");
+                var c = (n === "SESAR OPAK") ? "red" : (n === "SESAR MERAPI MERBABU" ? "red" : "red");
                 return { color: c, weight: 6, opacity: 0.8 };
             },
             onEachFeature: function(feature, layer) {
