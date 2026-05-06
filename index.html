@@ -39,14 +39,11 @@
     <script src="https://cdn.jsdelivr.net/npm/leaflet-textpath@1.2.3/leaflet.textpath.min.js"></script>
 
     <script>
-        var pojokKiriAtas = [-7.242611, 109.761658]; 
-        var pojokKananBawah = [-8.708642, 111.027832]; 
-        var bounds = [pojokKiriAtas, pojokKananBawah];
-        
+        var bounds = [[-7.242611, 109.761658], [-8.708642, 111.027832]];
         var map = L.map('map', { zoomControl: false }).fitBounds(bounds);
 
         L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-            maxZoom: 21, subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: '© Google Maps'
+            maxZoom: 21, subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
         }).addTo(map);
 
         L.imageOverlay('pga.png', bounds, { opacity: 0.4 }).addTo(map);
@@ -68,38 +65,44 @@
                 return { color: c, weight: 6, opacity: 0.8 };
             },
             onEachFeature: function(feature, layer) {
-                // Konfigurasi agar teks hanya muncul satu kali di tengah
-                layer.setText(feature.properties.nama, {
-                    repeat: false,         // TIDAK berulang
-                    center: true,          // Posisi di TENGAH garis
-                    offset: -12,           // Jarak di atas garis
-                    attributes: {
-                        'fill': 'white',
-                        'font-weight': 'bold',
-                        'font-size': '14px',
-                        'style': 'text-shadow: 2px 2px 3px black;'
-                    }
-                });
+                layer.setText(feature.properties.nama, { repeat: false, center: true, offset: -12, attributes: { 'fill': 'white', 'font-weight': 'bold', 'font-size': '14px', 'style': 'text-shadow: 2px 2px 3px black;' } });
             }
         }).addTo(map);
 
+        // Objek GPS & Garis Penghubung
         var userMarker = L.circleMarker([0,0], { radius: 9, color: 'white', weight: 3, fillColor: '#007bff', fillOpacity: 1 }).addTo(map);
         var accuracyCircle = L.circle([0,0], { radius: 1, color: '#007bff', weight: 1, fillOpacity: 0.15 }).addTo(map);
+        
+        // GARIS JARAK: Garis biru putus-putus
+        var distanceLine = L.polyline([], { color: '#007bff', weight: 3, dashArray: '5, 10', opacity: 0.8 }).addTo(map);
+
         var gpsActive = false;
 
         function lacakSaya() {
             if (!navigator.geolocation) return alert("GPS tidak didukung.");
             navigator.geolocation.watchPosition((pos) => {
                 var lat = pos.coords.latitude, lng = pos.coords.longitude, acc = pos.coords.accuracy;
+                
                 userMarker.setLatLng([lat, lng]);
                 accuracyCircle.setLatLng([lat, lng]).setRadius(acc);
 
+                // LOGIKA TURF UNTUK MENCARI TITIK TERDEKAT
                 var userPt = turf.point([lng, lat]);
                 var snapped = turf.nearestPointOnLine(dataSesar, userPt, { units: 'kilometers' });
+                
+                var closestLng = snapped.geometry.coordinates[0];
+                var closestLat = snapped.geometry.coordinates[1];
                 var jarak = snapped.properties.dist.toFixed(2);
                 var namaSesar = snapped.properties.nama || "Sesar";
 
+                // UPDATE GARIS PENGHUBUNG
+                distanceLine.setLatLngs([
+                    [lat, lng],           // Titik GPS User
+                    [closestLat, closestLng] // Titik terdekat di sesar
+                ]);
+
                 document.getElementById('info-panel').innerHTML = `📡 GPS: ${Math.round(acc)} m <br> 📏 Jarak: <span style="color:red">${jarak} km ke ${namaSesar}</span>`;
+                
                 if (!gpsActive) { map.setView([lat, lng], 14); gpsActive = true; }
             }, (err) => alert("Aktifkan GPS!"), { enableHighAccuracy: true });
         }
