@@ -30,10 +30,12 @@
     <div id="map"></div>
     <div class="info-box" id="info-panel">
         📡 GPS: Menunggu... <br>
-        📏 Jarak ke Sesar: -
+        📏 Jarak ke Sesar: - <br>
+        ⚠️ Estimasi MMI: - <br>
+        ⚠️ PGA: -
     </div>
 
-    <button class="btn-loc" onclick="lacakSaya()">📍 Cek Posisi & Jarak Sesar</button>
+    <button class="btn-loc" onclick="lacakSaya()">📍 Cek Posisi, Sesar & PGA</button>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/leaflet-textpath@1.2.3/leaflet.textpath.min.js"></script>
@@ -72,7 +74,7 @@
             ]
         };
 
-        // RENDER SESAR DENGAN FLIP SELEKTIF
+        // RENDER SESAR WITH FLIP
         L.geoJSON(dataSesar, {
             style: function(feature) {
                 var n = feature.properties.nama;
@@ -83,26 +85,44 @@
             },
             onEachFeature: function(feature, layer) {
                 var nama = feature.properties.nama;
-
-                // Tambahkan nama sesar yang perlu di-flip di sini
                 var daftarSesarFlip = ["JAVA BACK-ARC THRUST"]; 
-
                 var perluFlip = daftarSesarFlip.includes(nama);
 
                 layer.setText(nama, {
-                    repeat: false,
-                    center: true,
-                    offset: -12,
-                    orientation: perluFlip ? 'flip' : 0, // Hanya 'flip' jika masuk dalam daftarSesarFlip
-                    attributes: {
-                        'fill': 'white',
-                        'font-weight': 'bold',
-                        'font-size': '13px',
-                        'style': 'text-shadow: 2px 2px 3px black;'
-                    }
+                    repeat: false, center: true, offset: -12,
+                    orientation: perluFlip ? 'flip' : 0,
+                    attributes: { 'fill': 'white', 'font-weight': 'bold', 'font-size': '13px', 'style': 'text-shadow: 2px 2px 3px black;' }
                 });
             }
         }).addTo(map);
+
+        // FUNGSI ESTIMASI MMI DAN PGA BERDASARKAN JARAK KE SESAR (KILOMETER)
+        function hitungPgaMmiByDistance(dKm) {
+            var mmiVal = "";
+            var pgaVal = "";
+
+            if (dKm <= 2) {
+                mmiVal = "VIII - IX (Sangat Kuat / Kerusakan Parah)";
+                pgaVal = "> 30 %g";
+            } else if (dKm <= 5) {
+                mmiVal = "VII - VIII (Sangat Kuat / Kerusakan Sedang)";
+                pgaVal = "18 - 30 %g";
+            } else if (dKm <= 10) {
+                mmiVal = "VI - VII (Kuat / Ringan-Sedang)";
+                pgaVal = "9 - 18 %g";
+            } else if (dKm <= 20) {
+                mmiVal = "V - VI (Sedang / Dirasakan Banyak Orang)";
+                pgaVal = "3.9 - 9 %g";
+            } else if (dKm <= 40) {
+                mmiVal = "III - IV (Ringan)";
+                pgaVal = "1.4 - 3.9 %g";
+            } else {
+                mmiVal = "I - II (Tidak Terasa / Lemah)";
+                pgaVal = "< 1.4 %g";
+            }
+
+            return { mmi: mmiVal, pga: pgaVal };
+        }
 
         // OBJEK GPS & GARIS PENGHUBUNG
         var userMarker = L.circleMarker([0,0], { radius: 9, color: 'white', weight: 3, fillColor: '#007bff', fillOpacity: 1 }).addTo(map);
@@ -125,16 +145,24 @@
                 
                 var closestLng = snapped.geometry.coordinates[0];
                 var closestLat = snapped.geometry.coordinates[1];
-                var jarak = snapped.properties.dist.toFixed(2);
+                var jarakKm = parseFloat(snapped.properties.dist.toFixed(2));
                 var namaSesar = snapped.properties.nama || "Sesar";
 
-                // UPDATE GARIS PENGHUBUNG
+                // UPDATE GARIS PENGHUBUNG KE SESAR TERDEKAT
                 distanceLine.setLatLngs([
                     [lat, lng],
                     [closestLat, closestLng]
                 ]);
 
-                document.getElementById('info-panel').innerHTML = `📡 GPS: ${Math.round(acc)} m <br> 📏 Jarak: <span style="color:red">${jarak} km ke ${namaSesar}</span>`;
+                // KALKULASI PGA DAN MMI SECARA REAL-TIME DARI JARAK
+                var gempainfo = hitungPgaMmiByDistance(jarakKm);
+
+                document.getElementById('info-panel').innerHTML = `
+                    📡 <b>GPS:</b> ${Math.round(acc)} m <br> 
+                    📏 <b>Jarak:</b> <span style="color:red">${jarakKm} km ke ${namaSesar}</span><br>
+                    ⚠️ <b>Estimasi MMI:</b> ${gempainfo.mmi}<br>
+                    ⚠️ <b>PGA:</b> ${gempainfo.pga}
+                `;
                 
                 if (!gpsActive) { map.setView([lat, lng], 13); gpsActive = true; }
             }, (err) => alert("Aktifkan GPS!"), { enableHighAccuracy: true });
